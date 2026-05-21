@@ -1,0 +1,94 @@
+# Config D — Overtraining Run (100× Config B, WSD + Dropout)
+#
+# Architecture: d=448, L=10, H=8, head_dim=56, FFN=640 (SwiGLU), post-norm, weight tying
+# Total params: ~39.2M (identical to Config B)
+#
+# Run with: bash scripts/train_dgx8.sh configs/exp_d.toml
+#
+# Effective batch (8 GPUs):
+#   batch_size=16 × grad_accum_steps=4 × world_size=8 = 512 sequences/step
+#   512 × 1024 tokens = 524,288 tokens/step
+#   500,000 steps × 524,288 = ~262B tokens (100× Config B's 2.62B)
+#
+# Key changes from Config B (overtraining best practices):
+#   1. WSD schedule (not cosine) — keeps peak LR for 90% of training, avoids
+#      wasting compute at near-zero LR on repeated data (MiniCPM finding).
+#   2. Dropout 0.1 — regularises against memorisation when >4 epochs
+#      (~10-15% reduction in degradation from repetition, Muennighoff et al.).
+#   3. 100× steps (500K) — targets ~118 tok/param, deep into the overtraining
+#      regime where small models continue to improve.
+#
+# LR scaled from ablation baseline (batch_size=32, grad_accum=8 → effective 256, lr=2.1e-4)
+# via linear scaling rule:
+#   512 / 256 = 2×  →  2.1e-4 × 2 = 4.2e-4
+
+[model]
+vocab_size = 50257
+context_length = 1024
+n_layers = 10
+n_heads = 8
+d_model = 448
+d_ff = 640                     # SwiGLU hidden dim → ~39.2M total params
+dropout = 0.1                  # regularise for multi-epoch (>4 epoch threshold)
+activation = "swiglu"
+norm_position = "post"         # RMSNorm post-norm
+weight_tying = true
+bias = false
+qk_norm = false
+positional_encoding = "rope"
+rope_theta = 10_000.0
+
+[data]
+train_path = "data/tokenized/train.bin"
+val_path = "data/tokenized/val.bin"
+
+[training]
+batch_size = 16
+eval_batch_size = 8
+grad_accum_steps = 4           # effective batch = 512 seqs across 8 GPUs (16×4×8)
+learning_rate = 4.2e-4         # same as Config B (matched effective batch size)
+weight_decay = 0.13
+optimizer = "adamw"
+betas = [0.9, 0.95]
+max_steps = 500000             # 100× Config B (5000 → 500,000)
+warmup_steps = 2000            # ~0.4% of total; longer warmup stabilises long runs
+lr_schedule = "wsd"            # Warmup-Stable-Decay: peak LR for 90%, decay last 10%
+min_lr_ratio = 0.1
+wsd_decay_fraction = 0.1       # decay in final 10% = 50K steps
+gradient_clip_norm = 1.0
+use_amp = true
+use_compile = false
+eval_interval = 5000           # eval every 5K steps (every ~2.6B tokens)
+checkpoint_interval = 10000    # checkpoint every 10K steps
+checkpoint_dir = "checkpoints/exp_d"
+max_checkpoints = 3
+max_best_checkpoints = 3
+sample_interval = 5000
+log_interval = 50
+quick_plot_interval = 1000
+num_workers = 4
+pin_memory = true
+
+# DDP / torchrun settings
+ddp_backend = "nccl"
+ddp_find_unused_parameters = false
+ddp_broadcast_buffers = false
+ddp_sync_log_interval = 100
+
+# CUDA telemetry
+cuda_metrics_interval = 50
+cuda_nvidia_smi_interval = 500
+
+[eval]
+test_data_path = "data/tokenized/test.bin"
+
+[logging]
+root_level = "INFO"
+
+[logging.levels]
+"tiny_llm.data" = "INFO"
+"tiny_llm.model" = "WARNING"
+"tiny_llm.training" = "INFO"
+"tiny_llm.eval" = "INFO"
+"tiny_llm.posttraining" = "WARNING"
+"tiny_llm.demo" = "INFO"

@@ -1,0 +1,85 @@
+# Config C — Scaled Experimental Wide Model (weight-tied)
+#
+# Architecture: d=512, L=7, H=8, head_dim=64, FFN=640 (SwiGLU), pre-norm, weight tying
+# Total params: ~40.0M
+#
+# Run with: bash scripts/train_dgx8.sh configs/exp_c.toml
+#
+# Effective batch (8 GPUs):
+#   batch_size=32 × grad_accum_steps=2 × world_size=8 = 512 sequences/step
+#   512 × 1024 tokens = 524,288 tokens/step
+#
+# LR scaled from ablation baseline (batch_size=32, grad_accum=8 → effective 256, lr=2.0e-4)
+# via linear scaling rule:
+#   512 / 256 = 2×  →  2.0e-4 × 2 = 4.0e-4
+
+[model]
+vocab_size = 50257
+context_length = 1024
+n_layers = 7
+n_heads = 8
+d_model = 512
+d_ff = 640                     # SwiGLU hidden dim → ~40.0M total params
+dropout = 0.0
+activation = "swiglu"
+norm_position = "pre"          # RMSNorm pre-norm
+weight_tying = true
+bias = false
+qk_norm = false
+positional_encoding = "rope"
+rope_theta = 10_000.0
+
+[data]
+train_path = "data/tokenized/train.bin"
+val_path = "data/tokenized/val.bin"
+
+[training]
+batch_size = 32
+eval_batch_size = 16
+grad_accum_steps = 2           # effective batch = 512 seqs across 8 GPUs (32×2×8)
+learning_rate = 4.0e-4         # 2.0e-4 × 2 (linear scaling: 256→512 sequences)
+weight_decay = 0.20
+optimizer = "adamw"
+betas = [0.9, 0.95]
+max_steps = 5000
+warmup_steps = 100             # 2% of total steps; 2× batch increase is modest, original warmup sufficient
+lr_schedule = "cosine"
+min_lr_ratio = 0.1
+wsd_decay_fraction = 0.2
+gradient_clip_norm = 1.0
+use_amp = true
+use_compile = false
+eval_interval = 500
+checkpoint_interval = 1000
+checkpoint_dir = "checkpoints/exp_c"
+max_checkpoints = 3
+max_best_checkpoints = 3
+sample_interval = 500
+log_interval = 10
+quick_plot_interval = 100
+num_workers = 4
+pin_memory = true
+
+# DDP / torchrun settings
+ddp_backend = "nccl"
+ddp_find_unused_parameters = false
+ddp_broadcast_buffers = false
+ddp_sync_log_interval = 10
+
+# CUDA telemetry
+cuda_metrics_interval = 10
+cuda_nvidia_smi_interval = 100
+
+[eval]
+test_data_path = "data/tokenized/test.bin"
+
+[logging]
+root_level = "INFO"
+
+[logging.levels]
+"tiny_llm.data" = "INFO"
+"tiny_llm.model" = "WARNING"
+"tiny_llm.training" = "INFO"
+"tiny_llm.eval" = "INFO"
+"tiny_llm.posttraining" = "WARNING"
+"tiny_llm.demo" = "INFO"
