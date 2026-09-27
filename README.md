@@ -1,6 +1,6 @@
 # Tiny LLM (40M)
 
-A ~40M-parameter decoder-only transformer, written from scratch in PyTorch. Everything here is hand-written `torch.nn` code: the multi-head attention, RoPE, RMSNorm, SwiGLU FFN, KV cache, training loop, data pipeline. I didn't use HuggingFace Trainer, Lightning, or any pre-built model classes.
+A ~40M-parameter decoder-only transformer, written from scratch in PyTorch. Everything here is `torch.nn` code: the multi-head attention, RoPE, RMSNorm, SwiGLU FFN, KV cache, training loop, data pipeline. I didn't use HuggingFace Trainer, Lightning, or any pre-built model classes.
 
 I trained it on ~800M tokens from six sources (OpenWebText, Wikipedia, FineWeb-Edu, C4, BookCorpus, WikiHow), then ran SFT and DPO post-training. Architecture and hyperparameters came out of Optuna sweeps and multi-seed ablations, all documented in the notebooks.
 
